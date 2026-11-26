@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VeriCraft — Transparent Supply Chain Proof of Origin for Artisan Goods</title>
+  <meta name="description" content="Verify authentic handcrafted artisan goods on the Ethereum blockchain with QR provenance tags and immutable custody timelines." />
+  <meta property="og:title" content="VeriCraft — Proof of Origin for Artisan Goods" />
+  <meta property="og:description" content="Transparent supply chain provenance and QR verification for handcrafted artisan goods." />
+  <meta property="og:type" content="website" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- Ethers.js v6 and QRCodeJS loaded via CDN (no bundler required) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="contractConfig.js"></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="top-bar">
+    <div class="top-bar-inner">
+      <a href="?" class="brand-wordmark">
+        <svg class="brand-loom-mark" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+          <path d="M14 2L25 14L14 26L3 14L14 2Z" stroke="currentColor" stroke-width="1.8" />
+          <path d="M14 7L20 14L14 21L8 14L14 7Z" stroke="#B84A27" stroke-width="1.5" />
+          <circle cx="14" cy="14" r="2.2" fill="#B87D20" />
+        </svg>
+        <span>VeriCraft</span>
+      </a>
+
+      <nav class="primary-nav" aria-label="Primary Navigation">
+        <button type="button" class="nav-tab is-active" data-tab="verify" aria-controls="view-verify" aria-selected="true">
+          Customer Verification
+        </button>
+        <button type="button" class="nav-tab" data-tab="artisan" aria-controls="view-artisan" aria-selected="false">
+          Artisan Portal
+        </button>
+        <button type="button" class="nav-tab" data-tab="handoff" aria-controls="view-handoff" aria-selected="false">
+          Supply Chain Handoff
+        </button>
+        <button type="button" class="nav-tab" data-tab="admin" aria-controls="view-admin" aria-selected="false">
+          Admin Panel
+        </button>
+      </nav>
+
+      <div class="header-actions">
+        <button type="button" id="connectWalletBtn" class="btn btn-primary">
+          Connect Wallet
+        </button>
+      </div>
+    </div>
+    <div class="woven-trim" aria-hidden="true"></div>
+  </header>
+
+  <section class="wallet-bar" aria-label="Wallet and Network Context">
+    <div class="wallet-bar-inner">
+      <div class="wallet-identity">
+        <span class="wallet-label">Account</span>
+        <code id="walletAddressDisplay" class="mono-value">Guest (Read-Only)</code>
+        <button type="button" id="copyWalletBtn" class="btn-inline hidden" title="Copy connected address">Copy</button>
+        <button type="button" id="disconnectWalletBtn" class="btn-inline hidden" title="Disconnect wallet">Disconnect</button>
+        <span class="meta-sep" aria-hidden="true">·</span>
+        <span class="role-pair">
+          <span class="wallet-label">Role</span>
+          <span id="walletRoleBadge" class="role-tag role-guest">Guest</span>
+        </span>
+      </div>
+
+      <div class="wallet-controls">
+        <label for="demoAccountSelect" class="wallet-label">Quick Signer</label>
+        <select id="demoAccountSelect" class="select-compact" aria-label="Switch local Hardhat signer">
+          <option value="">Read-Only (Guest)</option>
+        </select>
+        <span class="meta-sep" aria-hidden="true">·</span>
+        <span id="networkStatusText" class="network-text">Connecting...</span>
+        <button type="button" id="reconnectNodeBtn" class="btn-inline hidden">Retry Node</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Wallet Connection Modal -->
+  <div id="walletModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="walletModalTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <p class="eyebrow">Artisan Ledger Access</p>
+          <h2 id="walletModalTitle" class="modal-title">Connect Your Wallet</h2>
+        </div>
+        <button type="button" id="closeWalletModalBtn" class="btn-icon" aria-label="Close wallet dialog">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="wallet-option-card">
+          <div class="wallet-option-top">
+            <div class="wallet-option-info">
+              <strong>MetaMask Browser Wallet</strong>
+              <p id="metamaskStatusMsg">Sign transactions directly via MetaMask on Hardhat Localhost (Chain ID 31337).</p>
+            </div>
+            <button type="button" id="modalMetaMaskBtn" class="btn btn-primary">Connect MetaMask</button>
+            <a id="openStandaloneTabLink" href="?" target="_blank" rel="noopener noreferrer" class="btn btn-primary hidden">
+              Open in New Tab
+            </a>
+          </div>
+          <div id="metamaskRpcRow" class="rpc-inline-row hidden">
+            <span>RPC: <code>http://127.0.0.1:8545</code></span>
+            <span class="meta-sep" aria-hidden="true">·</span>
+            <span>Chain ID: <code>31337</code></span>
+            <button type="button" id="copyRpcUrlBtn" class="btn-inline">Copy RPC</button>
+          </div>
+        </div>
+
+        <div class="modal-divider">
+          <span>Or connect with a local Hardhat craft role</span>
+        </div>
+
+        <div id="modalRoleList" class="modal-role-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <main class="main-container">
+    <!-- TAB 1: CUSTOMER VERIFICATION (DEFAULT PUBLIC VIEW) -->
+    <section id="view-verify" class="view-panel is-active" aria-labelledby="verify-heading">
+      <div class="craft-hero-panel">
+        <div class="craft-hero-copy">
+          <p class="eyebrow">Heritage Craft Provenance Registry</p>
+          <h1 id="verify-heading" class="page-title">Trace Every Handcrafted Story to Its Maker</h1>
+          <p class="page-subtitle">
+            Scan a craft hangtag or select any piece from the artisan workshop catalog below to inspect raw materials, workshop origin, and every custody checkpoint.
+          </p>
+
+          <form id="verifySearchForm" class="search-bar" novalidate>
+            <label for="searchProductId" class="sr-only">Product ID</label>
+            <input
+              type="number"
+              id="searchProductId"
+              name="productId"
+              min="1"
+              step="1"
+              placeholder="Enter Product ID (e.g. 1)"
+              class="input-field search-input"
+              required
+            />
+            <button type="submit" class="btn btn-terracotta">Verify Origin</button>
+          </form>
+        </div>
+
+        <div class="craft-hero-motifs">
+          <button type="button" class="craft-motif-tile" data-motif-action="admin">
+            <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <circle cx="20" cy="20" r="15" />
+              <path d="M20 5v30M5 20h30M9.5 9.5l21 21M30.5 9.5l-21 21" opacity="0.45" />
+              <circle cx="20" cy="20" r="5" fill="#FFFDF9" />
+            </svg>
+            <span>Verified Makers</span>
+          </button>
+          <button type="button" class="craft-motif-tile" data-motif-action="materials">
+            <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <path d="M8 10h24v20H8z" />
+              <path d="M8 16h24M8 24h24M16 10v20M24 10v20" opacity="0.45" />
+            </svg>
+            <span>Raw Materials</span>
+          </button>
+          <button type="button" class="craft-motif-tile" data-motif-action="journey">
+            <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <path d="M7 28c5-8 9-8 13-2s8 6 13-10" stroke-linecap="round" />
+              <circle cx="7" cy="28" r="2.5" fill="currentColor" />
+              <circle cx="20" cy="26" r="2.5" fill="currentColor" />
+              <circle cx="33" cy="16" r="2.5" fill="#B84A27" stroke="#B84A27" />
+            </svg>
+            <span>Custody Trail</span>
+          </button>
+          <button type="button" class="craft-motif-tile" data-motif-action="artisan">
+            <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <rect x="8" y="8" width="10" height="10" rx="1.5" />
+              <rect x="22" y="8" width="10" height="10" rx="1.5" />
+              <rect x="8" y="22" width="10" height="10" rx="1.5" />
+              <path d="M22 22h5v5h-5zM30 22h2v4M26 30h6v2" />
+            </svg>
+            <span>QR Hangtags</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="catalog-showcase">
+        <div class="catalog-header">
+          <div>
+            <h2 class="catalog-title">Registered Artisan Pieces</h2>
+            <p class="muted-text">Click any piece to inspect its blockchain certificate and handoff trail</p>
+          </div>
+          <span id="catalogCountText" class="mono-value muted-text tabular-nums">Loading...</span>
+        </div>
+        <div id="quickProductList" class="craft-gallery-grid" role="group" aria-label="Registered products on-chain">
+          <span class="muted-text">Loading artisan catalog...</span>
+        </div>
+      </div>
+
+      <div id="verifyLoading" class="state-card hidden">
+        <p>Fetching product provenance from blockchain...</p>
+      </div>
+
+      <div id="verifyError" class="state-card state-error hidden" role="alert">
+        <h2 id="verifyErrorTitle">Product Record Not Found</h2>
+        <p id="verifyErrorMessage">Check the Product ID or ensure the local Hardhat node is running.</p>
+      </div>
+
+      <article id="certificateCard" class="certificate-card hidden">
+        <div class="certificate-header">
+          <div class="seal-lockup">
+            <div class="brass-seal" aria-hidden="true">
+              <svg viewBox="0 0 44 44" fill="none">
+                <path d="M22 2l3.8 3.2 4.9-.5 1.5 4.7 4.4 2.5-.9 4.9 2.5 4.3-3.4 3.5.5 4.9-4.7 1.5-2.5 4.4-4.9-.9-4.3 2.5-3.5-3.4-4.9.5-1.5-4.7-4.4-2.5.9-4.9L3.8 21l3.4-3.5-.5-4.9 4.7-1.5 2.5-4.4 4.9.9L22 2z" fill="#B87D20" opacity="0.18" stroke="#B87D20" stroke-width="1.5" />
+                <path d="M15.5 22.3l4.2 4.2 8.8-9" stroke="#25644C" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </div>
+            <div>
+              <span class="seal-title">Verified Authentic on Blockchain</span>
+              <span class="seal-subtitle">Handcrafted Heritage Origin Certificate</span>
+            </div>
+          </div>
+
+          <div class="cert-header-actions">
+            <button type="button" id="copyShareLinkBtn" class="btn btn-secondary btn-sm">Copy Share Link</button>
+            <div class="accession-number">
+              <span class="accession-label">Certificate ID</span>
+              <strong id="certProductId" class="mono-value tabular-nums">#001</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="certificate-body">
+          <div class="cert-media-col">
+            <div class="media-frame" id="certMediaFrame">
+              <img id="certProductImage" src="" alt="" class="product-photo hidden" />
+              <div id="certImageFallback" class="media-fallback">
+                <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+                  <rect x="6" y="10" width="36" height="28" rx="2" />
+                  <path d="M6 31l10-9 8 7 6-5 12 10" />
+                  <circle cx="17" cy="19" r="3" />
+                </svg>
+                <span id="certFallbackLabel">Archival Craft Record</span>
+              </div>
+            </div>
+            <div class="hash-row">
+              <span class="hash-label">Media / IPFS Ref</span>
+              <code id="certImageHash" class="mono-value hash-code">—</code>
+            </div>
+          </div>
+
+          <div class="cert-details-col">
+            <div class="cert-title-block">
+              <p id="certCraftSpecialty" class="craft-kicker">—</p>
+              <h2 id="certProductName" class="cert-product-title">—</h2>
+              <div id="certMaterialSwatches" class="swatch-row"></div>
+            </div>
+
+            <dl class="accession-list">
+              <div class="accession-row">
+                <dt>Artisan Maker</dt>
+                <dd id="certArtisanName">—</dd>
+              </div>
+              <div class="accession-row">
+                <dt>Origin Village</dt>
+                <dd id="certOriginLocation">—</dd>
+              </div>
+              <div class="accession-row">
+                <dt>Raw Materials</dt>
+                <dd id="certMaterials">—</dd>
+              </div>
+              <div class="accession-row">
+                <dt>Artisan Wallet</dt>
+                <dd><code id="certArtisanAddress" class="mono-value">—</code></dd>
+              </div>
+              <div class="accession-row">
+                <dt>Current Owner</dt>
+                <dd><code id="certCurrentOwner" class="mono-value">—</code></dd>
+              </div>
+              <div class="accession-row">
+                <dt>Minted Date</dt>
+                <dd id="certCreatedAt" class="tabular-nums">—</dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+
+        <div class="provenance-section">
+          <div class="provenance-header">
+            <div>
+              <h3 class="provenance-title">Supply Chain Journey</h3>
+              <p class="muted-text">Select any checkpoint node to inspect its handoff record</p>
+            </div>
+            <span id="checkpointCountLabel" class="role-tag role-artisan tabular-nums">0 Checkpoints</span>
+          </div>
+
+          <!-- Interactive Horizontal Craft Stepper -->
+          <div id="journeyStepper" class="journey-stepper" role="list"></div>
+
+          <!-- Detailed Vertical Timeline -->
+          <ol id="provenanceTimeline" class="timeline-list"></ol>
+        </div>
+      </article>
+    </section>
+
+    <!-- TAB 2: ARTISAN PORTAL (REGISTER PRODUCT) -->
+    <section id="view-artisan" class="view-panel hidden" aria-labelledby="artisan-heading" hidden>
+      <div class="section-intro">
+        <div>
+          <p class="eyebrow">Creator Workshop</p>
+          <h1 id="artisan-heading" class="page-title">Artisan Product Registration</h1>
+          <p class="page-subtitle">
+            Verified craftspeople mint a permanent origin record and generate a scannable QR hangtag for each handcrafted piece.
+          </p>
+        </div>
+      </div>
+
+      <div id="artisanAuthNotice" class="notice-banner notice-info hidden">
+        <div class="notice-content">
+          <strong>Verified Artisan Signer Needed to Mint</strong>
+          <p>
+            Connect a verified artisan wallet in MetaMask or switch to <em>Ramesh Kumar (Artisan)</em> to mint new craft products.
+          </p>
+        </div>
+        <button type="button" id="useDemoArtisanBtn" class="btn btn-terracotta">Switch to Ramesh Kumar</button>
+      </div>
+
+      <div class="two-col-workspace">
+        <div class="surface-card">
+          <h2 class="card-heading">Mint Craft Origin Certificate</h2>
+          <form id="createProductForm" class="stack-form">
+            <div class="form-group">
+              <label for="productNameInput">Product Name</label>
+              <input
+                type="text"
+                id="productNameInput"
+                class="input-field"
+                placeholder="e.g. Handwoven Ilkal Silk Shawl"
+                required
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="productMaterialsInput">Raw Materials &amp; Natural Dyes</label>
+              <input
+                type="text"
+                id="productMaterialsInput"
+                class="input-field"
+                placeholder="e.g. Mulberry Silk, Natural Indigo & Madder Root"
+                required
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="productImageHashInput">Craft Photo URL or IPFS Hash</label>
+              <input
+                type="text"
+                id="productImageHashInput"
+                class="input-field mono-input"
+                placeholder="./assets/craft_handloom_shawl.jpg or ipfs://..."
+                value="./assets/craft_handloom_shawl.jpg"
+                required
+              />
+              <div class="preset-row">
+                <span class="preset-label">Studio Craft Presets:</span>
+                <button type="button" class="btn-inline preset-hash-btn" data-hash="./assets/craft_handloom_shawl.jpg">Ilkal Silk Shawl</button>
+                <button type="button" class="btn-inline preset-hash-btn" data-hash="./assets/craft_terracotta_pottery.jpg">Terracotta Vessel</button>
+                <button type="button" class="btn-inline preset-hash-btn" data-hash="./assets/craft_brass_lamp.jpg">Brass Diya Lamp</button>
+                <button type="button" class="btn-inline preset-hash-btn" data-hash="./assets/craft_rosewood_elephant.jpg">Rosewood Elephant</button>
+              </div>
+            </div>
+
+            <button type="submit" id="createProductSubmitBtn" class="btn btn-primary btn-full">
+              Register Product &amp; Generate QR Tag
+            </button>
+          </form>
+
+          <div id="artisanFeedback" class="feedback-box hidden" role="status"></div>
+        </div>
+
+        <div class="surface-card qr-panel">
+          <h2 class="card-heading">Live Craft Hangtag Studio</h2>
+
+          <div class="hangtag-studio">
+            <div class="printable-tag" id="printableQrTag">
+              <div class="hangtag-hole" aria-hidden="true"></div>
+              <div class="tag-brand">VeriCraft Authentic Origin</div>
+              <div class="hangtag-thumb-wrap">
+                <img id="hangtagLiveThumb" src="./assets/craft_handloom_shawl.jpg" alt="Craft hangtag preview" class="hangtag-thumb" />
+              </div>
+
+              <div id="qrEmptyState" class="qr-placeholder-box">
+                <span>QR Code appears here once minted</span>
+              </div>
+
+              <div id="qrcodeContainer" class="qr-canvas-box hidden"></div>
+
+              <div class="tag-meta">
+                <strong id="qrProductTitle">Handwoven Ilkal Silk Shawl</strong>
+                <span id="qrMaterialsPreview" class="muted-text">Raw materials preview</span>
+                <span id="qrProductIdLabel" class="mono-value tabular-nums">Draft Preview</span>
+                <span id="qrArtisanLabel" class="muted-text">Crafted by Verified Artisan</span>
+              </div>
+            </div>
+
+            <div id="qrResultCard" class="qr-result hidden">
+              <div class="qr-url-box">
+                <span class="hash-label">Verification URL</span>
+                <code id="qrVerificationUrl" class="mono-value">—</code>
+              </div>
+
+              <div class="qr-actions">
+                <button type="button" id="printQrBtn" class="btn btn-secondary">Print QR Tag</button>
+                <button type="button" id="previewQrBtn" class="btn btn-terracotta">Preview Verification Page</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: SUPPLY CHAIN HANDOFF (TRANSFER CUSTODY) -->
+    <section id="view-handoff" class="view-panel hidden" aria-labelledby="handoff-heading" hidden>
+      <div class="section-intro">
+        <div>
+          <p class="eyebrow">Custody Ledger</p>
+          <h1 id="handoff-heading" class="page-title">Supply Chain Handoff</h1>
+          <p class="page-subtitle">
+            Only the current on-chain custodian may transfer ownership and append a verified transit or retail checkpoint.
+          </p>
+        </div>
+      </div>
+
+      <div class="two-col-workspace">
+        <div class="surface-card">
+          <h2 class="card-heading">Transfer Custody</h2>
+          <form id="transferCustodyForm" class="stack-form">
+            <div class="form-group">
+              <label for="handoffProductId">Product ID</label>
+              <input
+                type="number"
+                id="handoffProductId"
+                class="input-field tabular-nums"
+                min="1"
+                step="1"
+                value="1"
+                required
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="nextOwnerAddress">Next Handler Wallet Address</label>
+              <input
+                type="text"
+                id="nextOwnerAddress"
+                class="input-field mono-input"
+                placeholder="0x..."
+                required
+              />
+              <div class="preset-row" id="handoffDemoHelpers"></div>
+            </div>
+
+            <div class="form-group">
+              <label for="handlerRole">Handler Role</label>
+              <select id="handlerRole" class="input-field" required>
+                <option value="Logistics Partner">Logistics Partner</option>
+                <option value="Quality Inspector">Quality Inspector</option>
+                <option value="Cooperative Hub">Cooperative Hub</option>
+                <option value="Retail Boutique">Retail Boutique</option>
+                <option value="Verified Collector">Verified Collector</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="handoffLocation">Current City / Facility</label>
+              <input
+                type="text"
+                id="handoffLocation"
+                class="input-field"
+                placeholder="e.g. Indiranagar Craft Gallery, Bengaluru"
+                required
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="handoffNote">Inspection / Status Note</label>
+              <input
+                type="text"
+                id="handoffNote"
+                class="input-field"
+                placeholder="e.g. Packaging sealed and received at retail boutique"
+                required
+              />
+            </div>
+
+            <button type="submit" id="transferSubmitBtn" class="btn btn-primary btn-full">
+              Record Custody Handoff
+            </button>
+          </form>
+
+          <div id="handoffFeedback" class="feedback-box hidden" role="status"></div>
+        </div>
+
+        <div class="surface-card">
+          <h2 class="card-heading">Selected Product Custody Status</h2>
+          <div id="handoffPreviewBox" class="custody-preview">
+            <p class="muted-text">Enter a Product ID to inspect its current on-chain custodian.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 4: ADMIN PANEL (VERIFY ARTISANS) -->
+    <section id="view-admin" class="view-panel hidden" aria-labelledby="admin-heading" hidden>
+      <div class="section-intro">
+        <div>
+          <p class="eyebrow">Registry Governance</p>
+          <h1 id="admin-heading" class="page-title">Admin Artisan Verification</h1>
+          <p class="page-subtitle">
+            Approve traditional craftspeople and regional artisan cooperatives to mint authentic provenance certificates.
+          </p>
+        </div>
+      </div>
+
+      <div id="adminAuthNotice" class="notice-banner notice-info hidden">
+        <div class="notice-content">
+          <strong>Administrator Signer Required</strong>
+          <p>
+            Only the contract deployer (<code id="adminAddressHint" class="mono-value">—</code>) can verify new artisans.
+          </p>
+        </div>
+        <button type="button" id="useDemoAdminBtn" class="btn btn-terracotta">Switch to Admin</button>
+      </div>
+
+      <div class="two-col-workspace">
+        <div class="surface-card">
+          <h2 class="card-heading">Verify New Artisan</h2>
+          <form id="registerArtisanForm" class="stack-form">
+            <div class="form-group">
+              <label for="artisanWalletInput">Artisan Wallet Address</label>
+              <input
+                type="text"
+                id="artisanWalletInput"
+                class="input-field mono-input"
+                placeholder="0x..."
+                required
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="artisanNameInput">Artisan or Workshop Name</label>
+              <input
+                type="text"
+                id="artisanNameInput"
+                class="input-field"
+                placeholder="e.g. Lakshmi Devi Weavers"
+                required
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="craftSpecialtyInput">Craft Specialty</label>
+              <input
+                type="text"
+                id="craftSpecialtyInput"
+                class="input-field"
+                placeholder="e.g. Ilkal Handloom Silk"
+                required
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="artisanLocationInput">Village / City</label>
+              <input
+                type="text"
+                id="artisanLocationInput"
+                class="input-field"
+                placeholder="e.g. Bagalkot, Karnataka"
+                required
+              />
+            </div>
+
+            <button type="submit" id="registerArtisanSubmitBtn" class="btn btn-primary btn-full">
+              Verify Artisan on Blockchain
+            </button>
+          </form>
+
+          <div id="adminFeedback" class="feedback-box hidden" role="status"></div>
+        </div>
+
+        <div class="surface-card">
+          <div class="directory-header">
+            <h2 class="card-heading">Verified Artisans Directory</h2>
+            <span id="artisanCountLabel" class="role-tag role-artisan tabular-nums">0 Verified</span>
+          </div>
+          <div id="artisansDirectoryList" class="directory-list">
+            <p class="muted-text">Loading registered artisans...</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <span>VeriCraft Heritage Provenance</span>
+      <span class="meta-sep" aria-hidden="true">·</span>
+      <span>Contract: <code id="footerContractAddress" class="mono-value">Not Deployed</code></span>
+    </div>
+  </footer>
+</body>
+</html>

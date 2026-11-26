@@ -1,0 +1,19 @@
+{
+  "name": "vericraft",
+  "private": true,
+  "version": "1.0.0",
+  "description": "VeriCraft: Transparent Supply Chain Proof of Origin for Artisan Goods",
+  "scripts": {
+    "node": "npx hardhat node",
+    "compile": "npx hardhat compile",
+    "deploy": "npx hardhat run scripts/deploy.js --network localhost",
+    "dev": "node -e \"const http=require('http'),fs=require('fs'),path=require('path');const mime={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'application/javascript; charset=utf-8','.json':'application/json','.jpg':'image/jpeg','.jpeg':'image/jpeg','.png':'image/png','.svg':'image/svg+xml'};http.createServer((req,res)=>{const cleanUrl=req.url.split('?')[0];const relPath=cleanUrl==='/'?'index.html':cleanUrl.replace(/^\\//,'');const filePath=path.join(__dirname,'frontend',relPath);if(!filePath.startsWith(path.join(__dirname,'frontend'))){res.writeHead(403);res.end('Forbidden');return;}fs.readFile(filePath,(err,data)=>{if(err){res.writeHead(404);res.end('Not found');return;}res.writeHead(200,{'Content-Type':mime[path.extname(filePath).toLowerCase()]||'application/octet-stream'});res.end(data);});}).listen(3000,'0.0.0.0',()=>console.log('VeriCraft frontend running at http://localhost:3000'));\"",
+    "build": "npx hardhat compile",
+    "lint": "node --check hardhat.config.js && node --check scripts/deploy.js && node --check frontend/app.js",
+    "test": "npx hardhat test"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "hardhat": "^2.22.17"
+  }
+}
