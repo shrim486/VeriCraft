@@ -531,43 +531,81 @@
   // Provider & Contract Initialization (Live Hardhat -> Interactive Preview)
   // ---------------------------------------------------------------------------
 
-  async function initReadProvider() {
+  function isLocalHost() {
+    if (typeof window === "undefined" || !window.location) return false;
+    var host = window.location.hostname;
+    return host === "localhost" || host === "127.0.0.1" || window.location.protocol === "file:";
+  }
+
+  async function isLocalRpcReachable(rpcUrl) {
+    if (typeof fetch !== "function") return false;
+    var controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+    var timer = controller
+      ? setTimeout(function () {
+          controller.abort();
+        }, 800)
+      : null;
+
+    try {
+      var res = await fetch(rpcUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] }),
+        signal: controller ? controller.signal : undefined,
+      });
+      return res.ok;
+    } catch (e) {
+      return false;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  async function initReadProvider(forceLocalProbe) {
     var footerAddr = el("footerContractAddress");
     if (footerAddr) {
-      footerAddr.textContent = hasValidConfig() ? CONTRACT_ADDRESS : "Interactive Preview Ledger";
+      footerAddr.textContent = hasValidConfig() ? CONTRACT_ADDRESS : "Interactive Demo Ledger";
     }
 
-    if (typeof ethers !== "undefined" && hasValidConfig()) {
+    var localEnv = isLocalHost();
+    if ((localEnv || forceLocalProbe) && typeof ethers !== "undefined" && hasValidConfig()) {
       try {
-        var provider = new ethers.JsonRpcProvider(getRpcUrl());
-        await provider.getBlockNumber();
+        var rpcUrl = getRpcUrl();
+        var reachable = await isLocalRpcReachable(rpcUrl);
+        if (reachable) {
+          var provider = new ethers.JsonRpcProvider(rpcUrl, 31337, { staticNetwork: true });
+          var code = await provider.getCode(CONTRACT_ADDRESS);
+          if (code && code !== "0x") {
+            state.mode = "live";
+            state.readProvider = provider;
+            state.readContract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
+            state.adminAddress = await state.readContract.admin();
 
-        var code = await provider.getCode(CONTRACT_ADDRESS);
-        if (code && code !== "0x") {
-          state.mode = "live";
-          state.readProvider = provider;
-          state.readContract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
-          state.adminAddress = await state.readContract.admin();
-
-          el("adminAddressHint").textContent = state.adminAddress;
-          el("networkStatusText").textContent = "Hardhat Local (31337)";
-          hideElement(el("reconnectNodeBtn"));
-          return true;
+            el("adminAddressHint").textContent = state.adminAddress;
+            el("networkStatusText").textContent = "Hardhat Local (31337)";
+            hideElement(el("reconnectNodeBtn"));
+            return true;
+          }
         }
       } catch (err) {
-        // Fall through smoothly to Interactive Craft Preview mode
+        // Fall through smoothly to Interactive Demo Ledger mode
       }
     }
 
-    // Engage Interactive Craft Preview mode so the UI never dead-ends offline
+    // Engage Interactive Demo Ledger mode so GitHub Pages and offline previews work cleanly
     state.mode = "preview";
     state.previewLedger = createPreviewLedger();
     state.readContract = state.previewLedger;
     state.adminAddress = await state.previewLedger.admin();
 
     el("adminAddressHint").textContent = state.adminAddress;
-    el("networkStatusText").textContent = "Preview Ledger (Start Hardhat for On-Chain)";
-    showElement(el("reconnectNodeBtn"));
+    if (localEnv) {
+      el("networkStatusText").textContent = "Interactive Demo Ledger (Local Hardhat Offline)";
+      showElement(el("reconnectNodeBtn"));
+    } else {
+      el("networkStatusText").textContent = "Interactive Demo Ledger";
+      hideElement(el("reconnectNodeBtn"));
+    }
     return true;
   }
 
@@ -1685,7 +1723,7 @@
     el("disconnectWalletBtn").addEventListener("click", disconnectWallet);
 
     el("reconnectNodeBtn").addEventListener("click", async function () {
-      await initReadProvider();
+      await initReadProvider(true);
       await loadProductListChips();
       await loadAndRenderProduct(state.currentProductId);
       await loadArtisansDirectory();
